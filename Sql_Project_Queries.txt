@@ -1,0 +1,183 @@
+PAY & HEADCOUNT
+
+1. Department — average salary & headcount
+
+SELECT d.department_name,
+       ROUND(AVG(e.salary),2) AS avg_salary,
+       COUNT(*) AS headcount
+FROM employees e
+JOIN departments d ON e.department_id = d.department_id
+GROUP BY d.department_name
+ORDER BY avg_salary DESC;
+
+Shows average pay per department and number of employees.
+
+
+2. Gender pay gap by department
+
+SELECT d.department_name,
+       e.gender,
+       ROUND(AVG(e.salary),2) AS avg_salary,
+       COUNT(*) AS num_employees
+FROM employees e
+JOIN departments d ON e.department_id = d.department_id
+GROUP BY d.department_name, e.gender
+ORDER BY d.department_name, e.gender;
+
+Compare average salaries for males vs females per department.
+
+
+3. Headcount by department and gender
+
+SELECT d.department_name,
+       e.gender,
+       COUNT(*) AS headcount
+FROM employees e
+JOIN departments d ON e.department_id = d.department_id
+GROUP BY d.department_name, e.gender
+ORDER BY d.department_name, headcount DESC;
+
+Quick demographic breakdown for org planning.
+
+
+4. Top 10 highest-paid employees
+
+SELECT emp_id,
+       first_name || ' ' || last_name AS full_name,
+       job_title,
+       salary
+FROM employees
+ORDER BY salary DESC 
+FETCH FIRST 10 ROWS ONLY;
+ 	OR
+Using Windows Function:
+SELECT emp_id,
+       first_name || ' ' || last_name AS full_name,
+       job_title,
+       salary,
+       rnum AS salary_rank
+FROM (
+    SELECT e.*,
+           ROW_NUMBER() OVER (ORDER BY salary DESC) AS rnum
+    FROM employees e
+)
+WHERE rnum <= 10
+ORDER BY rnum;
+
+Useful for identifying senior/expensive roles.
+----
+PERFORMANCE & TENURE
+
+5. Top performing employees (by performance_score)
+
+SELECT emp_id,
+       first_name || ' ' || last_name AS full_name,
+       job_title,
+       performance_score
+FROM employees
+ORDER BY performance_score DESC 
+FETCH FIRST 10 ROWS ONLY;
+
+Shows employees to reward/consider for promotion.
+
+
+6. Employee tenure (years) — sorted
+
+SELECT emp_id,
+       first_name || ' ' || last_name AS full_name,
+       hire_date,
+       ROUND(MONTHS_BETWEEN(TRUNC(SYSDATE), hire_date) / 12, 2) AS tenure_years
+FROM employees
+ORDER BY tenure_years DESC;
+
+Tenure in years (rounded) — helpful for retention analysis.
+
+
+7.Employees eligible for promotion 
+(Eligibility rule used here: performance_score >= 4.2 AND tenure >= 2 years)
+
+SELECT emp_id,
+       first_name || ' ' || last_name AS full_name,
+       job_title,
+       performance_score,
+       ROUND(MONTHS_BETWEEN(TRUNC(SYSDATE), hire_date) / 12, 2) AS tenure_years
+FROM employees
+WHERE performance_score >= 4.2
+  AND MONTHS_BETWEEN(TRUNC(SYSDATE), hire_date) >= 24
+ORDER BY performance_score DESC, tenure_years DESC;
+
+Change thresholds to fit your policy.
+----
+ATTENDANCE & ABSENTEEISM
+
+8. Absence rate (%) per employee (all months aggregated)
+
+SELECT e.emp_id,
+       e.first_name || ' ' || e.last_name AS full_name,
+       NVL(SUM(a.days_present),0) AS total_present,
+       NVL(SUM(a.days_absent),0) AS total_absent,
+       ROUND( (NVL(SUM(a.days_absent),0) / NULLIF(NVL(SUM(a.days_present),0) + NVL(SUM(a.days_absent),0),0)) * 100, 2) AS absence_pct
+FROM employees e
+LEFT JOIN attendance a ON e.emp_id = a.emp_id
+GROUP BY e.emp_id, e.first_name, e.last_name
+ORDER BY absence_pct DESC NULLS LAST;\
+
+Who has the highest absenteeism overall.
+
+9. Monthly absenteeism by department (month-level)
+
+SELECT TO_CHAR(a.month_start,'YYYY-MM') AS month,
+       d.department_name,
+       ROUND( SUM(a.days_absent) / NULLIF(SUM(a.days_present) + SUM(a.days_absent),0) * 100, 2 ) AS dept_absence_pct
+FROM attendance a
+JOIN employees e ON a.emp_id = e.emp_id
+JOIN departments d ON e.department_id = d.department_id
+GROUP BY TO_CHAR(a.month_start,'YYYY-MM'), d.department_name
+ORDER BY TO_CHAR(a.month_start,'YYYY-MM') DESC, dept_absence_pct DESC;
+
+Spot departments with rising absence month over month.
+
+
+10.Attendance trend for a single employee (time series)
+
+SELECT TO_CHAR(month_start,'YYYY-MM') AS month,
+       days_present,
+       days_absent
+FROM attendance
+WHERE emp_id = 101  -- change to desired emp_id
+ORDER BY month_start;
+
+Useful prior to one-to-one discussions.
+----
+PROMOTIONS & SALARY MOVES
+
+11. Promotions analysis — absolute & percent increase
+
+SELECT p.emp_id,
+       e.first_name || ' ' || e.last_name AS full_name,
+       e.job_title AS old_title,
+       p.new_title,
+       e.salary AS old_salary,
+       p.new_salary,
+       p.promotion_date,
+       (p.new_salary - e.salary) AS salary_increase,
+       ROUND( (p.new_salary - e.salary) / NULLIF(e.salary,0) * 100, 2) AS pct_increase
+FROM promotions p
+JOIN employees e ON p.emp_id = e.emp_id
+ORDER BY pct_increase DESC NULLS LAST;
+
+Shows who got the biggest raises and by what percent.
+
+
+12. Employees with no promotions recorded
+
+SELECT e.emp_id,
+       e.first_name || ' ' || e.last_name AS full_name,
+       e.job_title,
+       e.salary
+FROM employees e
+LEFT JOIN promotions p ON e.emp_id = p.emp_id
+WHERE p.emp_id IS NULL
+ORDER BY e.emp_id;
+
+Good for identifying stagnant career ladders.
